@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import eventlet
 eventlet.monkey_patch()
+import json
+import requests
 
 from flask import Flask, render_template, session, request, \
     copy_current_request_context
@@ -14,7 +16,7 @@ async_mode = None
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app, async_mode=async_mode, message_queue='redis://')
+socketio = SocketIO(app, async_mode=async_mode, message_queue='amqp://')
 
 @app.route('/')
 def index():
@@ -26,6 +28,7 @@ def send_msg():
     print(data)
     message = data.get('message','Empty response!')
     socketio.emit('my_event', {'data': message}, namespace='/test')
+
     return {
         'message':message,
         'code': 0
@@ -35,7 +38,12 @@ def send_msg():
 def test_message(message):
     session['receive_count'] = session.get('receive_count', 0) + 1
     emit('my_response',
-         {'data': 'api said: '+message['data'], 'count': session['receive_count']})
+         {'data': 'api said: '+message['data'], 'count': session['receive_count']}, broadcast=True)
+
+    print('asking:' + message['data'])
+    response = requests.post('http://localhost:5012/send', json={'message':message['data'],'sid':request.sid})
+    json_response = response.json()
+    print('json_response:' + json.dumps(json_response))
 
 @socketio.on('disconnect_request', namespace='/test')
 def disconnect_request():
@@ -68,4 +76,4 @@ def test_disconnect():
 
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True)
+    socketio.run(app, debug=True, port=5010)

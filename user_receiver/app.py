@@ -1,27 +1,26 @@
 # import eventlet
 # eventlet.monkey_patch()
 
-import json
-
 from flask import Flask, render_template, session, request
-from kafka import KafkaProducer
+from flask_socketio import SocketIO, emit, join_room, leave_room, \
+    close_room, rooms, disconnect
 
 async_mode = None
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
-producer = KafkaProducer(bootstrap_servers='localhost:9092',value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'))
+socketio = SocketIO(async_mode=async_mode, message_queue='amqp://')
 
 @app.route('/send', methods=['POST'])
 def send_msg():
     data = request.get_json()
-    print(data)
     message = data.get('message','Empty response!')
     sid = data.get('sid', '')
+    print('message:' + message)
     session['receive_count'] = session.get('receive_count', 0) + 1
 
-    data_message = {'data': 'agent_receiver said: '+message, 'count': session['receive_count'],'sid':sid}
-    producer.send('to_bot', data_message)
+    socketio.emit('my_response',
+         {'data': 'from ' + sid + ':user_receiver said: '+message, 'count': session['receive_count'],'sid':sid}, namespace='/test', room=sid)
 
     return {
         'message':message,
